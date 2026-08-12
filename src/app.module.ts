@@ -6,8 +6,10 @@ import { SerializationInterceptor } from './common/interceptors/serialization.in
 import { AppConfigModule } from './config/config.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CashModule } from './cash/cash.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CreditsModule } from './credits/credits.module';
+import { StorageModule } from './storage/storage.module';
 import { CustomersModule } from './customers/customers.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { InvoicesModule } from './invoices/invoices.module';
@@ -42,6 +44,8 @@ import { UsersModule } from './users/users.module';
     InvoicesModule,
     SalesModule,
     CreditsModule,
+    StorageModule,
+    CashModule,
     TelegramModule,
   ],
   providers: [

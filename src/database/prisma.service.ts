@@ -38,9 +38,33 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 
+  /**
+   * Conecta reintentando. La base puede tardar en aceptar conexiones (arranque del
+   * contenedor, reinicio del servidor, red intermitente); caer al primer intento
+   * convertiría eso en un ciclo de reinicios de la aplicación.
+   */
   async onModuleInit(): Promise<void> {
-    await this.$connect();
-    this.logger.log('Conexión con PostgreSQL establecida');
+    const attempts = 5;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await this.$connect();
+        this.logger.log('Conexión con PostgreSQL establecida');
+        return;
+      } catch (error) {
+        if (attempt === attempts) {
+          this.logger.error({ err: error }, 'No se pudo conectar con PostgreSQL');
+          throw error;
+        }
+
+        const delay = Math.min(2 ** attempt * 250, 5_000);
+        this.logger.warn(
+          { attempt, attempts, delay },
+          'Fallo al conectar con PostgreSQL; reintentando',
+        );
+        await sleep(delay);
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
