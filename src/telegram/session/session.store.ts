@@ -46,6 +46,8 @@ export interface SessionState {
   newCustomerName?: string;
   cart: CartLine[];
   discount?: string;
+  /** A qué pantalla volver tras escribir el descuento, según desde dónde se pidió. */
+  discountReturnTo?: 'cart' | 'payment';
   paidAmount?: string;
   paymentMethod?: string;
   dueDate?: string;

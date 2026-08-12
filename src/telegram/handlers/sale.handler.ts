@@ -176,12 +176,27 @@ export class SaleHandler extends BaseHandler {
 
     bot.action('sale:discount', async (ctx) => {
       await ctx.answerCbQuery();
-      this.sessions.setStep(ctx.user.id, 'sale:discount');
-      await this.edit(
-        ctx,
-        '*💲 DESCUENTO*\n\nEscribe el monto del descuento\\.',
-        this.cancelKeyboard(),
-      );
+      this.sessions.update(ctx.user.id, { step: 'sale:discount', discountReturnTo: 'cart' });
+      await this.edit(ctx, this.discountText(ctx), this.discountKeyboard());
+    });
+
+    // Mismo descuento, pero pedido desde la pantalla de pago: se vuelve allí, no al carrito.
+    bot.action('sale:discount:pay', async (ctx) => {
+      await ctx.answerCbQuery();
+      this.sessions.update(ctx.user.id, { step: 'sale:discount', discountReturnTo: 'payment' });
+      await this.edit(ctx, this.discountText(ctx), this.discountKeyboard());
+    });
+
+    bot.action('sale:discount:clear', async (ctx) => {
+      await ctx.answerCbQuery('Descuento quitado');
+      const session = this.sessions.get(ctx.user.id);
+      this.sessions.update(ctx.user.id, { discount: undefined, step: 'idle' });
+
+      if (session.discountReturnTo === 'payment') {
+        await this.edit(ctx, this.methodStepText(ctx), this.methodKeyboard());
+      } else {
+        await this.showCart(ctx);
+      }
     });
 
     // ── Pago ─────────────────────────────────────────────────
@@ -195,7 +210,7 @@ export class SaleHandler extends BaseHandler {
       }
 
       // La forma de pago va primero: la tarjeta lleva recargo y cambia el total.
-      await this.edit(ctx, this.methodStepText(), this.methodKeyboard());
+      await this.edit(ctx, this.methodStepText(ctx), this.methodKeyboard());
     });
 
     bot.action('sale:pay:full', async (ctx) => {
@@ -479,7 +494,17 @@ export class SaleHandler extends BaseHandler {
       return;
     }
 
-    this.sessions.update(ctx.user.id, { discount: discount.toString(), step: 'idle' });
+    const session = this.sessions.update(ctx.user.id, {
+      discount: discount.toString(),
+      step: 'idle',
+    });
+
+    // Se vuelve a la pantalla desde la que se pidió el descuento, no siempre al carrito.
+    if (session.discountReturnTo === 'payment') {
+      await this.reply(ctx, this.methodStepText(ctx), this.methodKeyboard());
+      return;
+    }
+
     await this.showCart(ctx, true);
   }
 
@@ -765,8 +790,21 @@ export class SaleHandler extends BaseHandler {
     ]);
   }
 
-  private methodStepText(): string {
-    return ['*💳 FORMA DE PAGO*', '', '¿Con qué te paga?'].join('\n');
+  /** Muestra el importe para que el descuento se decida viendo la cifra, no a ciegas. */
+  private methodStepText(ctx: BotContext): string {
+    const session = this.sessions.get(ctx.user.id);
+    const discount = session.discount ? money(session.discount) : money(0);
+    const lines = ['*💳 FORMA DE PAGO*', ''];
+
+    if (discount.greaterThan(0)) {
+      lines.push(
+        `Productos: ${amount(cartTotal(session.cart))}`,
+        `Descuento: \\-${amount(discount)}`,
+      );
+    }
+
+    lines.push(`Total: *${amount(this.base(ctx))}*`, '', '¿Con qué te paga?');
+    return lines.join('\n');
   }
 
   private methodKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
@@ -775,8 +813,29 @@ export class SaleHandler extends BaseHandler {
       [Markup.button.callback('🏦 Transferencia', `sale:method:${PaymentMethod.BANK_TRANSFER}`)],
       [Markup.button.callback('💳 Tarjeta (+10%)', `sale:method:${PaymentMethod.CARD}`)],
       [Markup.button.callback('📱 Pago móvil', `sale:method:${PaymentMethod.MOBILE_PAYMENT}`)],
+      [Markup.button.callback('💲 Aplicar descuento', 'sale:discount:pay')],
       [Markup.button.callback('🛒 Volver al carrito', 'sale:cart')],
       [Markup.button.callback('❌ Cancelar', 'sale:cancel')],
+    ]);
+  }
+
+  private discountText(ctx: BotContext): string {
+    const session = this.sessions.get(ctx.user.id);
+    const current = session.discount ? money(session.discount) : money(0);
+    const lines = ['*💲 DESCUENTO*', '', `Total sin descuento: ${amount(cartTotal(session.cart))}`];
+
+    if (current.greaterThan(0)) {
+      lines.push(`Descuento actual: ${amount(current)}`);
+    }
+
+    lines.push('', 'Escribe el monto a descontar\\.');
+    return lines.join('\n');
+  }
+
+  private discountKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
+    return Markup.inlineKeyboard([
+      [Markup.button.callback('🚫 Quitar descuento', 'sale:discount:clear')],
+      [Markup.button.callback('❌ Cancelar venta', 'sale:cancel')],
     ]);
   }
 
