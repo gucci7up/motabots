@@ -19,7 +19,7 @@
 | 12 | UX completa del bot | ✅ Hecho |
 | 13 | Auditoría | ✅ Hecho |
 | 14 | Testing exhaustivo | ✅ Hecho |
-| 15 | Docker / Dokploy / producción | ⬜ |
+| 15 | Docker / Dokploy / producción | ✅ Hecho |
 
 Nota: auditoría y tests no se dejan «para el final». Cada fase escribe sus propios audit logs y
 sus propios tests; las fases 13 y 14 son de consolidación y cobertura, no de estreno.

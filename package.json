@@ -30,7 +30,8 @@
     "db:reset": "prisma migrate reset",
     "import:inventory": "ts-node --transpile-only scripts/import-inventory.ts",
     "render:invoice": "ts-node --transpile-only scripts/render-invoice.ts",
-    "store:info": "ts-node --transpile-only scripts/set-store-info.ts"
+    "store:info": "ts-node --transpile-only scripts/set-store-info.ts",
+    "reconcile:inventory": "ts-node --transpile-only scripts/reconcile-inventory.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

@@ -96,7 +96,22 @@ La aplicación rechaza cualquier petición al webhook cuya cabecera
 `update_id` se registra en `telegram_updates`: si Telegram reentrega un update (cosa que hace
 ante timeouts), se descarta en lugar de duplicar una venta.
 
-> El endpoint del webhook se implementa en la Fase 2/12. Esta sección documenta el contrato.
+Con `TELEGRAM_MODE=webhook`, la aplicación registra el webhook sola al arrancar usando
+`APP_URL`. El `curl` de arriba sólo hace falta para diagnosticar o para forzar el registro.
+
+**Un solo consumidor.** Telegram entrega los updates a un único destino. Si dejas una instancia
+en polling con el mismo token (por ejemplo, tu máquina), el bot responderá de forma errática.
+Usa un bot distinto para desarrollo.
+
+### Réplicas y tareas programadas
+
+Las alertas (stock bajo, créditos vencidos, resumen diario) corren dentro de la aplicación con
+un scheduler en proceso. **Con más de una réplica, cada una enviaría su propia copia.** Mientras
+el despliegue tenga una sola instancia no hay problema; si algún día se escala, hay que mover
+las alertas a un job externo o añadir un bloqueo compartido.
+
+Las expresiones horarias usan la zona del contenedor: con `TZ=America/Santo_Domingo`, las 9:00
+son las 9:00 de aquí.
 
 ## 7. Almacenamiento de archivos
 
@@ -118,3 +133,32 @@ a S3/MinIO basta cambiar `STORAGE_DRIVER` y las credenciales correspondientes: e
 
 Las migraciones de Prisma no se revierten solas. El rollback seguro es: restaurar el backup
 previo y desplegar la imagen anterior. Por eso el paso 1 no es opcional.
+
+## 10. Paso de polling a webhook
+
+El sistema arranca en `polling`, que funciona sin dominio y es lo correcto mientras se
+desarrolla. Para pasar a producción:
+
+1. Verifica que el dominio responde: `curl https://TU-DOMINIO/health` debe devolver `ok`.
+2. En las variables de entorno de Dokploy:
+   ```
+   TELEGRAM_MODE=webhook
+   APP_URL=https://TU-DOMINIO
+   TELEGRAM_WEBHOOK_SECRET=<openssl rand -hex 32>
+   ```
+3. Redespliega. En el log de arranque debe aparecer
+   `Webhook de Telegram registrado en https://TU-DOMINIO/api/v1/telegram/webhook`.
+4. Comprueba: `curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"` — `url` debe coincidir
+   y `last_error_message` estar vacío.
+
+Si falta `APP_URL` o el secreto, la aplicación **no arranca**: es preferible fallar en el
+despliegue que quedarse con un bot mudo sin saberlo.
+
+Para volver a polling: `TELEGRAM_MODE=polling` y borrar el webhook en Telegram
+(`curl "https://api.telegram.org/bot<TOKEN>/deleteWebhook"`). Si no lo borras, Telegram seguirá
+intentando entregar por HTTP y el polling no recibirá nada.
+
+## 11. Operación diaria
+
+Ver [`runbook.md`](runbook.md): comprobaciones, síntomas frecuentes, tareas recurrentes y lo
+que nunca se debe hacer.

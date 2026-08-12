@@ -23,8 +23,8 @@ dashboard web.
 
 | Fase | Contenido | Estado |
 |------|-----------|--------|
-| 1 | Infraestructura: NestJS, Prisma, config, logging, Swagger, Docker | ✅ |
-| 2–15 | Usuarios, catálogo, inventario, ventas, créditos, facturación, caja, contabilidad, reportes, bot | ⬜ |
+| 1–14 | Infraestructura, usuarios y permisos, catálogo, inventario, clientes, ventas, créditos, facturación PDF, caja, gastos, contabilidad, reportes, bot completo, auditoría y pruebas de concurrencia | ✅ |
+| 15 | Producción: webhook, backups, runbook | ✅ |
 
 El plan detallado está en [`docs/implementation-plan.md`](docs/implementation-plan.md).
 
@@ -65,6 +65,10 @@ Requiere un `.env` con al menos `POSTGRES_PASSWORD`, `TELEGRAM_BOT_TOKEN` y `JWT
 | `npm run prisma:migrate` | Crea y aplica una migración |
 | `npm run prisma:deploy` | Aplica migraciones (producción) |
 | `npm run prisma:seed` | Siembra roles, permisos, categorías y configuración |
+| `npm run import:inventory` | Importa catálogo e inventario inicial desde un CSV |
+| `npm run reconcile:inventory` | Verifica que el stock cuadre con los movimientos |
+| `npm run store:info` | Configura logo, teléfono, dirección y redes de la tienda |
+| `npm run render:invoice` | Renderiza una factura a PDF para revisar el diseño |
 
 ## Documentación
 
@@ -76,6 +80,7 @@ Requiere un `.env` con al menos `POSTGRES_PASSWORD`, `TELEGRAM_BOT_TOKEN` y `JWT
 - [`docs/backups.md`](docs/backups.md) — respaldo y restauración
 - [`docs/telegram.md`](docs/telegram.md) — diseño del bot
 - [`docs/accounting.md`](docs/accounting.md) — contabilidad administrativa
+- [`docs/runbook.md`](docs/runbook.md) — operación diaria y resolución de problemas
 
 ## Reglas del proyecto
 
