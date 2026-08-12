@@ -156,6 +156,49 @@ describe('UsersService', () => {
     });
   });
 
+  describe('syncTelegramProfile', () => {
+    it('rellena el nombre de un usuario creado sin datos', async () => {
+      const sinNombre = { ...baseUser, username: null, firstName: null, lastName: null };
+      prisma.user.update.mockResolvedValue({ ...baseUser, firstName: 'Keysha', username: 'kmota' });
+
+      const user = await service.syncTelegramProfile(
+        { ...sinNombre, roleName: 'ADMIN', permissions: [] },
+        { firstName: 'Keysha', username: 'kmota' },
+      );
+
+      expect(user.firstName).toBe('Keysha');
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it('no escribe en la base si el perfil no cambió', async () => {
+      const actual = {
+        ...baseUser,
+        roleName: 'ADMIN',
+        permissions: [],
+        username: 'kmota',
+        firstName: 'K',
+        lastName: null,
+      };
+
+      const user = await service.syncTelegramProfile(actual, {
+        username: 'kmota',
+        firstName: 'K',
+      });
+
+      expect(user).toBe(actual);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('devuelve el usuario original si la actualización falla', async () => {
+      const actual = { ...baseUser, roleName: 'ADMIN', permissions: [] };
+      prisma.user.update.mockRejectedValue(new Error('base caída'));
+
+      const user = await service.syncTelegramProfile(actual, { firstName: 'Otro' });
+
+      expect(user).toBe(actual);
+    });
+  });
+
   describe('ensureAdmins', () => {
     it('no hace nada si la lista está vacía', async () => {
       await expect(service.ensureAdmins([])).resolves.toBe(0);

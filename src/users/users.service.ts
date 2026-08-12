@@ -166,6 +166,40 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
+  /**
+   * Sincroniza nombre y username desde Telegram cuando cambian. Los usuarios creados desde
+   * TELEGRAM_ADMIN_IDS nacen sin nombre; sin esto el bot los saludaría por su ID para siempre.
+   * Devuelve el usuario actualizado, o el mismo si no había nada que cambiar.
+   */
+  async syncTelegramProfile(
+    user: AuthenticatedUser,
+    profile: { username?: string; firstName?: string; lastName?: string },
+  ): Promise<AuthenticatedUser> {
+    const username = profile.username ?? null;
+    const firstName = profile.firstName ?? null;
+    const lastName = profile.lastName ?? null;
+
+    const unchanged =
+      user.username === username && user.firstName === firstName && user.lastName === lastName;
+
+    if (unchanged) {
+      return user;
+    }
+
+    try {
+      const updated = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { username, firstName, lastName },
+        include: USER_WITH_ROLE,
+      });
+      return this.toAuthenticatedUser(updated);
+    } catch (error) {
+      // Un fallo aquí no debe impedir usar el bot: el perfil es cosmético.
+      this.logger.warn({ err: error, userId: user.id }, 'No se pudo sincronizar el perfil');
+      return user;
+    }
+  }
+
   /** Marca el último acceso. No debe hacer fallar la operación que lo dispara. */
   async markLogin(userId: string): Promise<void> {
     try {

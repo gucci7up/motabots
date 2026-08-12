@@ -43,7 +43,12 @@ export class TelegramAuthService {
       return null;
     }
 
-    return user;
+    // El perfil de Telegram cambia con el tiempo (nombre, username): se mantiene al día.
+    return this.users.syncTelegramProfile(user, {
+      username: identity.username,
+      firstName: identity.firstName,
+      lastName: identity.lastName,
+    });
   }
 
   /**
