@@ -6,7 +6,10 @@ import { SerializationInterceptor } from './common/interceptors/serialization.in
 import { AppConfigModule } from './config/config.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { AccountingModule } from './accounting/accounting.module';
 import { CashModule } from './cash/cash.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { ReportsModule } from './reports/reports.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CreditsModule } from './credits/credits.module';
 import { StorageModule } from './storage/storage.module';
@@ -46,6 +49,9 @@ import { UsersModule } from './users/users.module';
     CreditsModule,
     StorageModule,
     CashModule,
+    ExpensesModule,
+    AccountingModule,
+    ReportsModule,
     TelegramModule,
   ],
   providers: [

@@ -19,8 +19,9 @@ npm-debug.log*
 # tests
 coverage/
 
-# almacenamiento local de archivos generados (PDFs, logos)
-storage/
+# almacenamiento local de archivos generados (PDFs, logos).
+# La barra inicial importa: sin ella el patrón también ignoraría src/storage/.
+/storage/
 
 # editores / SO
 .DS_Store
