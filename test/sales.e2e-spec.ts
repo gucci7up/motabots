@@ -427,6 +427,136 @@ describe('Ventas, créditos e inventario (e2e)', () => {
     });
   });
 
+  describe('concurrencia', () => {
+    async function setStock(units: number): Promise<void> {
+      await prisma.productVariant.update({
+        where: { id: variantId },
+        data: { currentStock: new Prisma.Decimal(units) },
+      });
+    }
+
+    function sellOne() {
+      return sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.CASH }],
+        },
+        userId,
+      );
+    }
+
+    it('dos ventas simultáneas de la última unidad: sólo una se completa', async () => {
+      await setStock(1);
+
+      const results = await Promise.allSettled([sellOne(), sellOne()]);
+
+      const completed = results.filter((result) => result.status === 'fulfilled');
+      const rejected = results.filter((result) => result.status === 'rejected');
+
+      expect(completed).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+
+      expect(await prisma.sale.count()).toBe(1);
+      expect(await stockOf()).toBe('0');
+    });
+
+    it('cinco ventas simultáneas con tres unidades: se completan exactamente tres', async () => {
+      await setStock(3);
+
+      const results = await Promise.allSettled([
+        sellOne(),
+        sellOne(),
+        sellOne(),
+        sellOne(),
+        sellOne(),
+      ]);
+
+      const completed = results.filter((result) => result.status === 'fulfilled');
+
+      expect(completed).toHaveLength(3);
+      expect(await prisma.sale.count()).toBe(3);
+      expect(await stockOf()).toBe('0');
+    }, 60_000);
+
+    it('el inventario nunca queda negativo bajo concurrencia', async () => {
+      await setStock(2);
+
+      await Promise.allSettled([sellOne(), sellOne(), sellOne(), sellOne()]);
+
+      const variant = await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+      expect(variant.currentStock.greaterThanOrEqualTo(0)).toBe(true);
+    }, 60_000);
+
+    it('los movimientos de inventario cuadran con el stock final', async () => {
+      await setStock(3);
+
+      await Promise.allSettled([sellOne(), sellOne(), sellOne(), sellOne(), sellOne()]);
+
+      const movements = await prisma.inventoryMovement.findMany({
+        where: { productVariantId: variantId },
+      });
+      const sold = movements.reduce(
+        (acc, movement) => acc.plus(movement.quantity),
+        new Prisma.Decimal(0),
+      );
+
+      // Se partió de 3 unidades: lo vendido más lo que queda tiene que dar 3.
+      const variant = await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+      expect(sold.plus(variant.currentStock).toString()).toBe('3');
+    }, 60_000);
+
+    it('cada venta simultánea obtiene un número distinto', async () => {
+      await setStock(3);
+
+      await Promise.allSettled([sellOne(), sellOne(), sellOne()]);
+
+      const sales = await prisma.sale.findMany();
+      const numbers = new Set(sales.map((sale) => sale.saleNumber));
+      const invoices = await prisma.invoice.findMany();
+      const invoiceNumbers = new Set(invoices.map((invoice) => invoice.number));
+
+      expect(numbers.size).toBe(sales.length);
+      expect(invoiceNumbers.size).toBe(invoices.length);
+    }, 60_000);
+
+    it('dos abonos simultáneos no dejan el saldo del crédito inconsistente', async () => {
+      const sale = await sales.create(
+        {
+          customerId,
+          items: [{ productVariantId: variantId, quantity: '2' }],
+          dueDate: '2026-09-01',
+        },
+        userId,
+      );
+      const creditId = sale.creditAccount!.id;
+
+      const pay = (value: string) =>
+        credits.registerInstallment({
+          creditAccountId: creditId,
+          amount: value,
+          method: PaymentMethod.CASH,
+          userId,
+        });
+
+      // 1000 + 1000 = 1600 no cabe: el saldo es 1600, así que uno de los dos debe fallar
+      // o quedar el saldo exacto. Lo que no puede pasar es un saldo negativo.
+      await Promise.allSettled([pay('1000.00'), pay('1000.00')]);
+
+      const credit = await prisma.creditAccount.findUniqueOrThrow({ where: { id: creditId } });
+      const payments = await prisma.payment.findMany({ where: { creditAccountId: creditId } });
+      const collected = payments.reduce(
+        (acc, payment) => acc.plus(payment.amount),
+        new Prisma.Decimal(0),
+      );
+
+      expect(credit.balance.greaterThanOrEqualTo(0)).toBe(true);
+      expect(credit.paidAmount.toString()).toBe(collected.toString());
+      expect(credit.balance.toString()).toBe(
+        credit.originalAmount.minus(credit.paidAmount).toString(),
+      );
+    }, 60_000);
+  });
+
   describe('cancelación', () => {
     it('devuelve el inventario y anula factura y crédito', async () => {
       const sale = await sales.create(

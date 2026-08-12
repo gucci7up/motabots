@@ -63,7 +63,7 @@ export class SalesService {
   ) {}
 
   /**
-   * Registra una venta completa. Todo ocurre dentro de una única transacción serializable:
+   * Registra una venta completa. Todo ocurre dentro de una única transacción:
    * venta, líneas, inventario, factura, pagos, crédito, caja, asientos y auditoría se
    * confirman juntos o no se crea nada. Nunca queda una venta a medias.
    */
@@ -83,6 +83,11 @@ export class SalesService {
 
     const creditEnabled = await this.settings.getBoolean(SettingKey.CREDIT_ENABLED, true);
 
+    // ReadCommitted, no Serializable: la venta ya toma bloqueos explícitos (FOR UPDATE sobre
+    // las variantes y sobre la secuencia de facturas), que es lo que garantiza que no se
+    // sobrevenda. Serializable no añade seguridad aquí y sí aborta transacciones sanas: con
+    // cinco ventas simultáneas del mismo producto se cancelaban todas entre sí. Con bloqueos
+    // pesimistas las ventas hacen cola y se completan las que tienen stock.
     const sale = await this.prisma.transaction(async (tx) => {
       if (dto.idempotencyKey) {
         const duplicate = await tx.sale.findUnique({
@@ -298,7 +303,7 @@ export class SalesService {
       });
 
       return tx.sale.findUniqueOrThrow({ where: { id: created.id }, include: SALE_DETAIL });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 20_000 });
 
     return sale;
   }
@@ -435,7 +440,7 @@ export class SalesService {
       });
 
       return cancelled;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 20_000 });
   }
 
   async findById(id: string): Promise<SaleWithDetail> {

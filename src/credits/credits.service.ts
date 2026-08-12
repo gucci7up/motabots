@@ -49,8 +49,9 @@ export class CreditsService {
   /**
    * Registra un abono a un crédito.
    *
-   * Todo va en una transacción con la fila del crédito bloqueada: dos abonos simultáneos
-   * al mismo crédito no pueden dejar el saldo inconsistente. El saldo de la venta y de la
+   * Todo va en una transacción con la fila del crédito bloqueada (FOR UPDATE): dos abonos
+   * simultáneos al mismo crédito hacen cola, no se pisan. El bloqueo explícito es lo que da
+   * la garantía, por eso basta ReadCommitted. El saldo de la venta y de la
    * factura se recalculan desde los pagos, nunca se ajustan a mano.
    */
   async registerInstallment(input: RegisterInstallmentInput): Promise<InstallmentResult> {
@@ -189,7 +190,7 @@ export class CreditsService {
       });
 
       return { payment, credit: updatedCredit, fullyPaid };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
   async findById(id: string): Promise<CreditWithRelations> {

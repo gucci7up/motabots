@@ -19,6 +19,7 @@ import { InventoryHandler } from './handlers/inventory.handler';
 import { InvoicesHandler } from './handlers/invoices.handler';
 import { ReportsHandler } from './handlers/reports.handler';
 import { SaleHandler } from './handlers/sale.handler';
+import { SettingsHandler } from './handlers/settings.handler';
 import { SessionStore } from './session/session.store';
 import { TelegramController } from './telegram.controller';
 import { TelegramService } from './telegram.service';
@@ -56,6 +57,7 @@ import { TelegramUpdateService } from './telegram-update.service';
     CashHandler,
     ExpensesHandler,
     ReportsHandler,
+    SettingsHandler,
   ],
   exports: [TelegramService],
 })

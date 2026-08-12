@@ -82,7 +82,6 @@ export const MENU_ENTRIES: MenuEntry[] = [
     label: '⚙️ Configuración',
     callback: CALLBACK.SETTINGS,
     permissions: ['settings.manage'],
-    pendingPhase: 12,
   },
 ];
 

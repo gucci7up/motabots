@@ -32,6 +32,7 @@ import { InventoryHandler } from './handlers/inventory.handler';
 import { InvoicesHandler } from './handlers/invoices.handler';
 import { ReportsHandler } from './handlers/reports.handler';
 import { SaleHandler } from './handlers/sale.handler';
+import { SettingsHandler } from './handlers/settings.handler';
 
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
@@ -52,6 +53,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     private readonly cash: CashHandler,
     private readonly expenses: ExpensesHandler,
     private readonly reports: ReportsHandler,
+    private readonly settingsHandler: SettingsHandler,
   ) {}
 
   /**
@@ -69,6 +71,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       this.cash,
       this.expenses,
       this.reports,
+      this.settingsHandler,
     ];
   }
 
@@ -109,6 +112,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     this.bot?.stop('SIGTERM');
+  }
+
+  /**
+   * Envía un mensaje suelto a un usuario. Lo usan las alertas programadas.
+   * Lanza si el bot no está configurado: quien envía debe enterarse de que no salió.
+   */
+  async sendMessage(telegramUserId: bigint, text: string): Promise<void> {
+    if (!this.bot) {
+      throw new Error('El bot de Telegram no está inicializado');
+    }
+    await this.bot.telegram.sendMessage(Number(telegramUserId), text);
   }
 
   /** Punto de entrada del webhook. El controlador ya validó el secret token. */

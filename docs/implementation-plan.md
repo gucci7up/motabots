@@ -17,8 +17,8 @@
 | 10 | Gastos y contabilidad | ✅ Hecho |
 | 11 | Reportes | ✅ Hecho |
 | 12 | UX completa del bot | ✅ Hecho |
-| 13 | Auditoría | ⬜ |
-| 14 | Testing exhaustivo | ⬜ |
+| 13 | Auditoría | ✅ Hecho |
+| 14 | Testing exhaustivo | ✅ Hecho |
 | 15 | Docker / Dokploy / producción | ⬜ |
 
 Nota: auditoría y tests no se dejan «para el final». Cada fase escribe sus propios audit logs y
@@ -156,3 +156,12 @@ Detectados durante el análisis, con la decisión tomada:
 10. **`Decimal` de Prisma y JSON.** `Prisma.Decimal` no serializa a JSON de forma nativa. Se
     añade un interceptor de serialización que lo emite como string, para no perder precisión al
     exponer la API al futuro dashboard.
+
+11. **Nivel de aislamiento de la venta (detectado en la Fase 14).** La venta corría en
+    `Serializable`. La prueba de concurrencia lo desmintió: con **cinco ventas simultáneas del
+    mismo producto no se completaba ninguna** — PostgreSQL abortaba todas por conflicto de
+    serialización. La venta ya toma bloqueos explícitos `FOR UPDATE` sobre las variantes y sobre
+    la secuencia de facturas, que es lo que realmente impide la sobreventa; `Serializable` no
+    añadía seguridad y sí destruía el rendimiento. Ahora usa `ReadCommitted` con bloqueo
+    pesimista: las ventas hacen cola y se completan todas las que tienen stock. La prueba de
+    «dos ventas por la última unidad → sólo una pasa» sigue en verde.

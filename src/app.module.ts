@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AlertsModule } from './alerts/alerts.module';
 import { AppLoggerModule } from './common/logging/logger.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { SerializationInterceptor } from './common/interceptors/serialization.interceptor';
@@ -52,7 +54,9 @@ import { UsersModule } from './users/users.module';
     ExpensesModule,
     AccountingModule,
     ReportsModule,
+    ScheduleModule.forRoot(),
     TelegramModule,
+    AlertsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
