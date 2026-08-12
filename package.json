@@ -28,7 +28,9 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",
-    "import:inventory": "ts-node --transpile-only scripts/import-inventory.ts"
+    "import:inventory": "ts-node --transpile-only scripts/import-inventory.ts",
+    "render:invoice": "ts-node --transpile-only scripts/render-invoice.ts",
+    "store:info": "ts-node --transpile-only scripts/set-store-info.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

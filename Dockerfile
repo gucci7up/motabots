@@ -32,6 +32,8 @@ ENV TZ=America/Santo_Domingo
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+# Logo por defecto de la factura: el volumen de storage arranca vacío en un despliegue nuevo.
+COPY --from=build /app/assets ./assets
 COPY package*.json ./
 
 # El almacenamiento de PDFs y logos se monta como volumen
