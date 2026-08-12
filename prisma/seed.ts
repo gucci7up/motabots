@@ -106,7 +106,20 @@ async function seedInvoiceSequence(): Promise<void> {
       padding: 6,
     },
   });
-  console.log(`Secuencia de facturas: ${prefix}-{YYYY}-{000001}`);
+  // Serie propia para el número interno de venta: no comparte consecutivo con las facturas.
+  await prisma.invoiceSequence.upsert({
+    where: { series: 'SALE' },
+    update: {},
+    create: {
+      series: 'SALE',
+      prefix: 'V',
+      format: '{PREFIX}-{SEQ}',
+      nextNumber: 1,
+      padding: 6,
+    },
+  });
+
+  console.log(`Secuencia de facturas: ${prefix}-{YYYY}-{000001} | Ventas: V-{000001}`);
 }
 
 async function seedSettings(): Promise<void> {

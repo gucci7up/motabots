@@ -7,7 +7,11 @@ import { AppConfigModule } from './config/config.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
+import { CreditsModule } from './credits/credits.module';
+import { CustomersModule } from './customers/customers.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { InvoicesModule } from './invoices/invoices.module';
+import { SalesModule } from './sales/sales.module';
 import { ProductsModule } from './products/products.module';
 import { SettingsModule } from './settings/settings.module';
 import { PrismaModule } from './database/prisma.module';
@@ -34,6 +38,10 @@ import { UsersModule } from './users/users.module';
     CategoriesModule,
     ProductsModule,
     InventoryModule,
+    CustomersModule,
+    InvoicesModule,
+    SalesModule,
+    CreditsModule,
     TelegramModule,
   ],
   providers: [
