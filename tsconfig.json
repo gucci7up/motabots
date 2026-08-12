@@ -28,6 +28,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "test/**/*", "prisma/**/*"],
+  "include": ["src/**/*", "test/**/*", "prisma/**/*", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

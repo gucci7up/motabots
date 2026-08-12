@@ -6,6 +6,10 @@ import { SerializationInterceptor } from './common/interceptors/serialization.in
 import { AppConfigModule } from './config/config.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CategoriesModule } from './categories/categories.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { ProductsModule } from './products/products.module';
+import { SettingsModule } from './settings/settings.module';
 import { PrismaModule } from './database/prisma.module';
 import { HealthModule } from './health/health.module';
 import { RolesModule } from './roles/roles.module';
@@ -26,6 +30,10 @@ import { UsersModule } from './users/users.module';
     RolesModule,
     UsersModule,
     AuthModule,
+    SettingsModule,
+    CategoriesModule,
+    ProductsModule,
+    InventoryModule,
     TelegramModule,
   ],
   providers: [

@@ -37,6 +37,16 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/unbound-method': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
+      // Inspeccionar `mock.calls` es inherentemente no tipado; el casting explícito
+      // en cada acceso añade ruido sin aportar seguridad real en un test.
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.ts', 'prisma/seed.ts'],
+    rules: {
+      // Son utilidades de línea de comandos: su salida es para la consola.
+      'no-console': 'off',
     },
   },
 );

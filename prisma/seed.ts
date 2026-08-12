@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { PrismaClient, SettingType } from '@prisma/client';
 import {
   PERMISSIONS,

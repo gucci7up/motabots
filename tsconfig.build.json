@@ -1,7 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // Dentro de dist a propósito: `deleteOutDir` lo borra con cada build. Fuera de dist,
+    // un tsbuildinfo obsoleto hace que tsc omita archivos y la app falle en tiempo de ejecución.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "test", "prisma", "dist", "**/*spec.ts"]
