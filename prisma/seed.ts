@@ -1,5 +1,12 @@
 /* eslint-disable no-console */
 import { PrismaClient, SettingType } from '@prisma/client';
+import {
+  PERMISSIONS,
+  ROLE_DESCRIPTIONS,
+  ROLE_PERMISSIONS,
+  SYSTEM_ROLES,
+  type SystemRole,
+} from '../src/roles/permissions';
 
 /**
  * Seed idempotente: puede ejecutarse tantas veces como haga falta.
@@ -7,73 +14,6 @@ import { PrismaClient, SettingType } from '@prisma/client';
  */
 
 const prisma = new PrismaClient();
-
-const PERMISSIONS: { code: string; group: string; description: string }[] = [
-  { code: 'sales.create', group: 'sales', description: 'Registrar ventas' },
-  { code: 'sales.read', group: 'sales', description: 'Consultar ventas' },
-  { code: 'sales.cancel', group: 'sales', description: 'Cancelar ventas' },
-  { code: 'customers.create', group: 'customers', description: 'Crear clientes' },
-  { code: 'customers.read', group: 'customers', description: 'Consultar clientes' },
-  { code: 'customers.update', group: 'customers', description: 'Modificar clientes' },
-  { code: 'products.create', group: 'products', description: 'Crear productos y variantes' },
-  { code: 'products.read', group: 'products', description: 'Consultar productos' },
-  { code: 'products.update', group: 'products', description: 'Modificar productos y precios' },
-  { code: 'inventory.read', group: 'inventory', description: 'Consultar inventario' },
-  { code: 'inventory.adjust', group: 'inventory', description: 'Ajustar y mover inventario' },
-  { code: 'invoices.create', group: 'invoices', description: 'Emitir facturas' },
-  { code: 'invoices.read', group: 'invoices', description: 'Consultar facturas' },
-  { code: 'invoices.cancel', group: 'invoices', description: 'Anular facturas' },
-  { code: 'payments.create', group: 'payments', description: 'Registrar pagos' },
-  { code: 'payments.read', group: 'payments', description: 'Consultar pagos' },
-  { code: 'credits.read', group: 'credits', description: 'Consultar créditos' },
-  { code: 'credits.collect', group: 'credits', description: 'Registrar abonos a créditos' },
-  { code: 'cash.open', group: 'cash', description: 'Abrir caja' },
-  { code: 'cash.close', group: 'cash', description: 'Cerrar caja' },
-  { code: 'cash.read', group: 'cash', description: 'Consultar caja' },
-  { code: 'expenses.create', group: 'expenses', description: 'Registrar gastos' },
-  { code: 'expenses.read', group: 'expenses', description: 'Consultar gastos' },
-  { code: 'accounting.read', group: 'accounting', description: 'Consultar contabilidad' },
-  { code: 'reports.read', group: 'reports', description: 'Consultar reportes' },
-  { code: 'audit.read', group: 'audit', description: 'Consultar auditoría' },
-  { code: 'settings.manage', group: 'settings', description: 'Modificar configuración' },
-  { code: 'users.manage', group: 'users', description: 'Administrar usuarios y roles' },
-];
-
-const SELLER_PERMISSIONS = [
-  'sales.create',
-  'sales.read',
-  'customers.create',
-  'customers.read',
-  'customers.update',
-  'products.read',
-  'inventory.read',
-  'invoices.create',
-  'invoices.read',
-  'payments.create',
-  'payments.read',
-  'credits.read',
-  'credits.collect',
-  'cash.open',
-  'cash.close',
-  'cash.read',
-  'expenses.create',
-];
-
-const ACCOUNTANT_PERMISSIONS = [
-  'sales.read',
-  'customers.read',
-  'products.read',
-  'inventory.read',
-  'invoices.read',
-  'payments.read',
-  'credits.read',
-  'cash.read',
-  'expenses.create',
-  'expenses.read',
-  'accounting.read',
-  'reports.read',
-  'audit.read',
-];
 
 const CATEGORIES = ['Perfumes', 'Cremas', 'Body Oils', 'Gloss', 'Otros'];
 
@@ -101,33 +41,26 @@ async function seedPermissions(): Promise<void> {
 }
 
 async function seedRoles(): Promise<void> {
-  const roles = [
-    { name: 'ADMIN', description: 'Acceso total al sistema' },
-    { name: 'SELLER', description: 'Ventas, clientes, cobros y caja' },
-    { name: 'ACCOUNTANT', description: 'Consulta financiera y contable' },
-  ];
+  const roleNames = Object.values(SYSTEM_ROLES);
 
-  for (const role of roles) {
+  for (const name of roleNames) {
     await prisma.role.upsert({
-      where: { name: role.name },
-      update: { description: role.description, isSystem: true },
-      create: { ...role, isSystem: true },
+      where: { name },
+      update: { description: ROLE_DESCRIPTIONS[name], isSystem: true },
+      create: { name, description: ROLE_DESCRIPTIONS[name], isSystem: true },
     });
   }
 
-  await assignPermissions(
-    'ADMIN',
-    PERMISSIONS.map((p) => p.code),
-  );
-  await assignPermissions('SELLER', SELLER_PERMISSIONS);
-  await assignPermissions('ACCOUNTANT', ACCOUNTANT_PERMISSIONS);
+  for (const name of roleNames) {
+    await assignPermissions(name, ROLE_PERMISSIONS[name]);
+  }
 
-  console.log('Roles: ADMIN, SELLER, ACCOUNTANT');
+  console.log(`Roles: ${roleNames.join(', ')}`);
 }
 
-async function assignPermissions(roleName: string, codes: string[]): Promise<void> {
+async function assignPermissions(roleName: SystemRole, codes: readonly string[]): Promise<void> {
   const role = await prisma.role.findUniqueOrThrow({ where: { name: roleName } });
-  const permissions = await prisma.permission.findMany({ where: { code: { in: codes } } });
+  const permissions = await prisma.permission.findMany({ where: { code: { in: [...codes] } } });
 
   for (const permission of permissions) {
     await prisma.rolePermission.upsert({

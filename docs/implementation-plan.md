@@ -6,7 +6,7 @@
 |------|-----------|--------|
 | 0 | Análisis, arquitectura, modelo de datos | ✅ Hecho |
 | 1 | Infraestructura: NestJS, Prisma, PostgreSQL, config, logging, Swagger, Docker | ✅ Hecho |
-| 2 | Usuarios, roles, permisos, autenticación Telegram | ⬜ |
+| 2 | Usuarios, roles, permisos, autenticación Telegram | ✅ Hecho |
 | 3 | Categorías, productos, variantes | ⬜ |
 | 4 | Inventario y movimientos | ⬜ |
 | 5 | Clientes | ⬜ |

@@ -4,15 +4,30 @@ import { AppLoggerModule } from './common/logging/logger.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { SerializationInterceptor } from './common/interceptors/serialization.interceptor';
 import { AppConfigModule } from './config/config.module';
+import { AuditModule } from './audit/audit.module';
+import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './database/prisma.module';
 import { HealthModule } from './health/health.module';
+import { RolesModule } from './roles/roles.module';
+import { TelegramModule } from './telegram/telegram.module';
+import { UsersModule } from './users/users.module';
 
 /**
- * Fase 1: infraestructura. Los módulos de dominio (users, products, sales, …) se añaden
- * aquí en las fases siguientes; ninguno de ellos dependerá del módulo de Telegram.
+ * Los módulos de dominio (products, sales, …) se añaden aquí en las fases siguientes;
+ * ninguno de ellos depende del módulo de Telegram. La dependencia va en un solo sentido.
  */
 @Module({
-  imports: [AppConfigModule, AppLoggerModule, PrismaModule, HealthModule],
+  imports: [
+    AppConfigModule,
+    AppLoggerModule,
+    PrismaModule,
+    AuditModule,
+    HealthModule,
+    RolesModule,
+    UsersModule,
+    AuthModule,
+    TelegramModule,
+  ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: SerializationInterceptor },
