@@ -1,0 +1,30 @@
+# dependencias
+node_modules/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# entorno y secretos
+.env
+.env.*
+!.env.example
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# tests
+coverage/
+
+# almacenamiento local de archivos generados (PDFs, logos)
+storage/
+
+# editores / SO
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

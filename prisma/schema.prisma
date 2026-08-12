@@ -1,0 +1,719 @@
+// MotaParfum Admin — modelo de datos
+// Documentación: docs/database.md
+//
+// Reglas del modelo:
+//  - Dinero en Decimal, nunca float. Importes (14,2), costos unitarios (14,4), cantidades (14,3).
+//  - Sin borrado físico en entidades financieras: se usan estados y operaciones inversas.
+//  - Las líneas de venta guardan snapshots de precio y costo.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum MeasurementUnit {
+  ML
+  OZ
+  G
+  UNIT
+  PACK
+}
+
+enum MovementDirection {
+  IN
+  OUT
+}
+
+enum InventoryMovementType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  DAMAGE
+  INITIAL_STOCK
+  SALE_CANCELLATION
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  CREDIT
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  MOBILE_PAYMENT
+  OTHER
+}
+
+enum CreditStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  ISSUED
+  PAID
+  PARTIAL
+  CREDIT
+  CANCELLED
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  OPENING
+  SALE
+  CREDIT_COLLECTION
+  EXPENSE
+  MANUAL_IN
+  MANUAL_OUT
+  CLOSING
+  ADJUSTMENT
+}
+
+enum AccountingEntryType {
+  REVENUE
+  COST_OF_GOODS_SOLD
+  EXPENSE
+  CREDIT_ISSUED
+  CREDIT_COLLECTED
+  INVENTORY_IN
+  INVENTORY_ADJUSTMENT
+  CASH_IN
+  CASH_OUT
+}
+
+enum AuditSource {
+  TELEGRAM
+  API
+  SYSTEM
+}
+
+enum SettingType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+enum TelegramUpdateStatus {
+  PROCESSED
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identidad y acceso
+// ─────────────────────────────────────────────────────────────
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  /// Los roles del sistema no pueden eliminarse desde la interfaz
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  /// Código estable, p. ej. "sales.create". Nunca se renombra.
+  code        String   @unique
+  description String?
+  group       String
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@index([group])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  /// Identidad del usuario: su ID numérico de Telegram
+  telegramUserId BigInt    @unique
+  username       String?
+  firstName      String?
+  lastName       String?
+  roleId         String
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  role                Role                @relation(fields: [roleId], references: [id])
+  sales               Sale[]
+  cancelledSales      Sale[]              @relation("SaleCancelledBy")
+  payments            Payment[]
+  inventoryMovements  InventoryMovement[]
+  expenses            Expense[]
+  auditLogs           AuditLog[]
+  openedCashSessions  CashSession[]       @relation("CashSessionOpenedBy")
+  closedCashSessions  CashSession[]       @relation("CashSessionClosedBy")
+  cashMovements       CashMovement[]
+  accountingEntries   AccountingEntry[]
+  cancelledInvoices   Invoice[]           @relation("InvoiceCancelledBy")
+
+  @@index([roleId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Catálogo
+// ─────────────────────────────────────────────────────────────
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String?  @unique
+  categoryId  String?
+  description String?
+  brand       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category Category?        @relation(fields: [categoryId], references: [id])
+  variants ProductVariant[]
+
+  @@index([categoryId])
+  @@index([name])
+  @@map("products")
+}
+
+model ProductVariant {
+  id        String          @id @default(cuid())
+  productId String
+  name      String
+  sku       String?         @unique
+  barcode   String?         @unique
+  /// Valor libre del tamaño ("30", "100", "S"). La unidad va en `unit`.
+  size      String?
+  unit      MeasurementUnit @default(UNIT)
+
+  salePrice Decimal @db.Decimal(14, 2)
+  costPrice Decimal @db.Decimal(14, 4)
+
+  minimumStock Decimal @default(0) @db.Decimal(14, 3)
+  /// Proyección mantenida dentro de transacción. La verdad está en inventory_movements.
+  currentStock Decimal @default(0) @db.Decimal(14, 3)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   Product             @relation(fields: [productId], references: [id])
+  movements InventoryMovement[]
+  saleItems SaleItem[]
+
+  @@index([productId])
+  @@index([isActive])
+  @@map("product_variants")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Inventario
+// ─────────────────────────────────────────────────────────────
+
+model InventoryMovement {
+  id               String                @id @default(cuid())
+  productVariantId String
+  type             InventoryMovementType
+  direction        MovementDirection
+  /// Siempre positiva; el sentido lo da `direction`
+  quantity         Decimal               @db.Decimal(14, 3)
+  stockBefore      Decimal               @db.Decimal(14, 3)
+  stockAfter       Decimal               @db.Decimal(14, 3)
+  unitCost         Decimal               @db.Decimal(14, 4)
+  totalCost        Decimal               @db.Decimal(14, 2)
+  referenceType    String?
+  referenceId      String?
+  userId           String?
+  notes            String?
+  createdAt        DateTime              @default(now())
+
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+  user           User?          @relation(fields: [userId], references: [id])
+
+  @@index([productVariantId, createdAt])
+  @@index([referenceType, referenceId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Clientes
+// ─────────────────────────────────────────────────────────────
+
+model Customer {
+  id                   String   @id @default(cuid())
+  name                 String
+  phone                String?
+  email                String?
+  address              String?
+  identificationNumber String?
+  notes                String?
+  creditLimit          Decimal? @db.Decimal(14, 2)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  sales          Sale[]
+  invoices       Invoice[]
+  creditAccounts CreditAccount[]
+  payments       Payment[]
+
+  @@index([name])
+  @@index([phone])
+  @@index([identificationNumber])
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ventas
+// ─────────────────────────────────────────────────────────────
+
+model Sale {
+  id         String  @id @default(cuid())
+  saleNumber String  @unique
+  customerId String?
+  userId     String
+
+  subtotal      Decimal @db.Decimal(14, 2)
+  discount      Decimal @default(0) @db.Decimal(14, 2)
+  taxAmount     Decimal @default(0) @db.Decimal(14, 2)
+  total         Decimal @db.Decimal(14, 2)
+  paidAmount    Decimal @default(0) @db.Decimal(14, 2)
+  pendingAmount Decimal @default(0) @db.Decimal(14, 2)
+
+  paymentStatus PaymentStatus
+  saleStatus    SaleStatus    @default(COMPLETED)
+
+  notes String?
+  /// Evita ventas duplicadas si Telegram reentrega un update o el usuario confirma dos veces
+  idempotencyKey String? @unique
+
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancellationReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer      Customer?         @relation(fields: [customerId], references: [id])
+  user          User              @relation(fields: [userId], references: [id])
+  cancelledBy   User?             @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
+  items         SaleItem[]
+  payments      Payment[]
+  invoice       Invoice?
+  creditAccount CreditAccount?
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([saleStatus, createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id               String @id @default(cuid())
+  saleId           String
+  productVariantId String
+
+  /// Nombre del producto tal como estaba al vender
+  descriptionSnapshot String
+  quantity            Decimal @db.Decimal(14, 3)
+  unitPrice           Decimal @db.Decimal(14, 2)
+  discount            Decimal @default(0) @db.Decimal(14, 2)
+  /// Costo unitario congelado: base de todo cálculo de utilidad
+  unitCostSnapshot    Decimal @db.Decimal(14, 4)
+  subtotal            Decimal @db.Decimal(14, 2)
+  total               Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+
+  sale           Sale           @relation(fields: [saleId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([saleId])
+  @@index([productVariantId])
+  @@map("sale_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Pagos y créditos
+// ─────────────────────────────────────────────────────────────
+
+model Payment {
+  id              String  @id @default(cuid())
+  saleId          String?
+  creditAccountId String?
+  customerId      String?
+  cashSessionId   String?
+
+  amount    Decimal       @db.Decimal(14, 2)
+  method    PaymentMethod
+  reference String?
+  notes     String?
+  userId    String
+
+  /// Los pagos no se editan ni borran: se corrigen con un pago de reversión
+  isReversal        Boolean @default(false)
+  reversedPaymentId String?
+  idempotencyKey    String? @unique
+
+  createdAt DateTime @default(now())
+
+  sale            Sale?          @relation(fields: [saleId], references: [id])
+  creditAccount   CreditAccount? @relation(fields: [creditAccountId], references: [id])
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  cashSession     CashSession?   @relation(fields: [cashSessionId], references: [id])
+  user            User           @relation(fields: [userId], references: [id])
+  reversedPayment Payment?       @relation("PaymentReversal", fields: [reversedPaymentId], references: [id])
+  reversals       Payment[]      @relation("PaymentReversal")
+
+  @@index([saleId])
+  @@index([creditAccountId])
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model CreditAccount {
+  id         String @id @default(cuid())
+  saleId     String @unique
+  customerId String
+
+  originalAmount Decimal @db.Decimal(14, 2)
+  paidAmount     Decimal @default(0) @db.Decimal(14, 2)
+  balance        Decimal @db.Decimal(14, 2)
+
+  dueDate DateTime
+  status  CreditStatus @default(PENDING)
+
+  closedAt    DateTime?
+  cancelledAt DateTime?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sale     Sale      @relation(fields: [saleId], references: [id])
+  customer Customer  @relation(fields: [customerId], references: [id])
+  payments Payment[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("credit_accounts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Facturación
+// ─────────────────────────────────────────────────────────────
+
+model InvoiceSequence {
+  id         String   @id @default(cuid())
+  series     String   @unique
+  prefix     String
+  /// Plantilla del número, p. ej. "{PREFIX}-{YYYY}-{SEQ}"
+  format     String   @default("{PREFIX}-{YYYY}-{SEQ}")
+  nextNumber Int      @default(1)
+  padding    Int      @default(6)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("invoice_sequences")
+}
+
+/// Rangos NCF/e-CF autorizados por la DGII. Definido para no bloquear el futuro;
+/// sin uso hasta que se solicite la integración fiscal.
+model FiscalSequence {
+  id          String   @id @default(cuid())
+  fiscalType  String
+  prefix      String
+  rangeFrom   Int
+  rangeTo     Int
+  nextNumber  Int
+  validUntil  DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoices Invoice[]
+
+  @@unique([fiscalType, prefix, rangeFrom])
+  @@map("fiscal_sequences")
+}
+
+model Invoice {
+  id         String  @id @default(cuid())
+  number     String  @unique
+  series     String
+  saleId     String  @unique
+  customerId String?
+
+  issueDate DateTime @default(now())
+
+  subtotal      Decimal @db.Decimal(14, 2)
+  discount      Decimal @default(0) @db.Decimal(14, 2)
+  taxAmount     Decimal @default(0) @db.Decimal(14, 2)
+  total         Decimal @db.Decimal(14, 2)
+  paidAmount    Decimal @default(0) @db.Decimal(14, 2)
+  pendingAmount Decimal @default(0) @db.Decimal(14, 2)
+
+  status InvoiceStatus @default(ISSUED)
+  notes  String?
+
+  // Ganchos fiscales (NCF/e-CF República Dominicana). Nulos hasta que se implemente.
+  fiscalType       String?
+  fiscalNumber     String?         @unique
+  fiscalSequenceId String?
+  customerTaxId    String?
+
+  // El PDF vive en el storage, no en la base de datos
+  pdfStorageKey String?
+  pdfChecksum   String?
+  pdfSizeBytes  Int?
+
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancellationReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sale           Sale            @relation(fields: [saleId], references: [id])
+  customer       Customer?       @relation(fields: [customerId], references: [id])
+  fiscalSequence FiscalSequence? @relation(fields: [fiscalSequenceId], references: [id])
+  cancelledBy    User?           @relation("InvoiceCancelledBy", fields: [cancelledById], references: [id])
+
+  @@index([customerId])
+  @@index([issueDate])
+  @@index([status])
+  @@map("invoices")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Caja
+// ─────────────────────────────────────────────────────────────
+
+model CashSession {
+  id            String  @id @default(cuid())
+  openedById    String
+  openingAmount Decimal @db.Decimal(14, 2)
+
+  closedById   String?
+  expectedCash Decimal? @db.Decimal(14, 2)
+  actualCash   Decimal? @db.Decimal(14, 2)
+  difference   Decimal? @db.Decimal(14, 2)
+
+  status CashSessionStatus @default(OPEN)
+  notes  String?
+
+  openedAt  DateTime  @default(now())
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  openedBy  User           @relation("CashSessionOpenedBy", fields: [openedById], references: [id])
+  closedBy  User?          @relation("CashSessionClosedBy", fields: [closedById], references: [id])
+  movements CashMovement[]
+  payments  Payment[]
+  expenses  Expense[]
+
+  @@index([status])
+  @@index([openedAt])
+  @@map("cash_sessions")
+}
+
+model CashMovement {
+  id            String            @id @default(cuid())
+  cashSessionId String
+  type          CashMovementType
+  direction     MovementDirection
+  amount        Decimal           @db.Decimal(14, 2)
+  referenceType String?
+  referenceId   String?
+  description   String?
+  userId        String
+  createdAt     DateTime          @default(now())
+
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@index([cashSessionId])
+  @@index([referenceType, referenceId])
+  @@map("cash_movements")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Gastos
+// ─────────────────────────────────────────────────────────────
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id                String        @id @default(cuid())
+  expenseCategoryId String
+  amount            Decimal       @db.Decimal(14, 2)
+  description       String
+  paymentMethod     PaymentMethod
+  reference         String?
+  userId            String
+  cashSessionId     String?
+  expenseDate       DateTime      @default(now())
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  category    ExpenseCategory @relation(fields: [expenseCategoryId], references: [id])
+  user        User            @relation(fields: [userId], references: [id])
+  cashSession CashSession?    @relation(fields: [cashSessionId], references: [id])
+
+  @@index([expenseCategoryId])
+  @@index([expenseDate])
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Contabilidad
+// ─────────────────────────────────────────────────────────────
+
+model AccountingEntry {
+  id            String              @id @default(cuid())
+  entryDate     DateTime            @default(now())
+  type          AccountingEntryType
+  referenceType String?
+  referenceId   String?
+  description   String
+  amount        Decimal             @db.Decimal(14, 2)
+  userId        String?
+  createdAt     DateTime            @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entryDate])
+  @@index([type, entryDate])
+  @@index([referenceType, referenceId])
+  @@map("accounting_entries")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Configuración, auditoría e idempotencia
+// ─────────────────────────────────────────────────────────────
+
+model Setting {
+  id          String      @id @default(cuid())
+  key         String      @unique
+  value       Json
+  type        SettingType @default(STRING)
+  description String?
+  updatedById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("settings")
+}
+
+/// Registro append-only. No existe borrado desde ninguna interfaz.
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  metadata  Json?
+  ipAddress String?
+  source    AuditSource @default(TELEGRAM)
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// Updates de Telegram ya procesados: descarta reentregas y evita ventas duplicadas.
+model TelegramUpdate {
+  id          String               @id @default(cuid())
+  updateId    BigInt               @unique
+  status      TelegramUpdateStatus @default(PROCESSED)
+  error       String?
+  processedAt DateTime             @default(now())
+
+  @@index([processedAt])
+  @@map("telegram_updates")
+}

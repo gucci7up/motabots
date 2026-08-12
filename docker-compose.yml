@@ -1,0 +1,84 @@
+# MotaParfum Admin — desarrollo y despliegue base.
+# Este stack es INDEPENDIENTE del stack de n8n: red propia, volúmenes propios, base propia.
+# En Dokploy, Traefik provee el reverse proxy y TLS; ver docs/deployment.md.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-motaparfum}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatoria}
+      POSTGRES_DB: ${POSTGRES_DB:-motaparfum_admin}
+      TZ: ${TZ:-America/Santo_Domingo}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-motaparfum} -d ${POSTGRES_DB:-motaparfum_admin}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - motaparfum
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - motaparfum
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      TZ: ${TZ:-America/Santo_Domingo}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-motaparfum}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-motaparfum_admin}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-motaparfum}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-motaparfum_admin}?schema=public
+      REDIS_URL: redis://redis:6379
+      APP_URL: ${APP_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-webhook}
+      JWT_SECRET: ${JWT_SECRET}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_PATH: /app/storage
+      STORE_NAME: ${STORE_NAME:-MotaParfum}
+      STORE_PHONE: ${STORE_PHONE}
+      STORE_ADDRESS: ${STORE_ADDRESS}
+      CURRENCY: ${CURRENCY:-DOP}
+      CURRENCY_SYMBOL: ${CURRENCY_SYMBOL:-RD$$}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      - storage_data:/app/storage
+    networks:
+      - motaparfum
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+
+networks:
+  motaparfum:
+    driver: bridge
