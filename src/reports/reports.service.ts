@@ -14,6 +14,10 @@ export interface SalesReport {
   grossSales: Prisma.Decimal;
   discounts: Prisma.Decimal;
   netSales: Prisma.Decimal;
+  /** ITBIS contenido en lo facturado. No es ingreso tuyo. */
+  taxCollected: Prisma.Decimal;
+  /** Recargos por pago con tarjeta cobrados en el período. */
+  surcharges: Prisma.Decimal;
   collected: Prisma.Decimal;
   onCredit: Prisma.Decimal;
   costOfGoodsSold: Prisma.Decimal;
@@ -58,7 +62,15 @@ export class ReportsService {
     const [aggregate, items] = await Promise.all([
       this.prisma.sale.aggregate({
         where,
-        _sum: { subtotal: true, discount: true, total: true, paidAmount: true, pendingAmount: true },
+        _sum: {
+          subtotal: true,
+          discount: true,
+          total: true,
+          taxAmount: true,
+          surcharge: true,
+          paidAmount: true,
+          pendingAmount: true,
+        },
         _count: { _all: true },
       }),
       this.prisma.saleItem.findMany({
@@ -71,6 +83,8 @@ export class ReportsService {
     const grossSales = money(aggregate._sum.subtotal ?? 0);
     const discounts = money(aggregate._sum.discount ?? 0);
     const netSales = money(aggregate._sum.total ?? 0);
+    const taxCollected = money(aggregate._sum.taxAmount ?? 0);
+    const surcharges = money(aggregate._sum.surcharge ?? 0);
     const collected = money(aggregate._sum.paidAmount ?? 0);
     const onCredit = money(aggregate._sum.pendingAmount ?? 0);
 
@@ -87,10 +101,13 @@ export class ReportsService {
       grossSales,
       discounts,
       netSales,
+      taxCollected,
+      surcharges,
       collected,
       onCredit,
       costOfGoodsSold,
-      profit: money(netSales.minus(costOfGoodsSold)),
+      // La ganancia se calcula sobre el ingreso real, sin el ITBIS que hay que entregar.
+      profit: money(netSales.minus(taxCollected).minus(costOfGoodsSold)),
       averageTicket: salesCount > 0 ? money(netSales.dividedBy(salesCount)) : money(0),
     };
   }

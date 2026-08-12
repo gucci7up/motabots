@@ -338,6 +338,10 @@ model Sale {
   subtotal      Decimal @db.Decimal(14, 2)
   discount      Decimal @default(0) @db.Decimal(14, 2)
   taxAmount     Decimal @default(0) @db.Decimal(14, 2)
+  /// Si el precio ya incluye el impuesto, el total NO lo suma encima: lo contiene.
+  taxIncluded   Boolean @default(false)
+  /// Recargo por forma de pago (tarjeta). Se suma al total.
+  surcharge     Decimal @default(0) @db.Decimal(14, 2)
   total         Decimal @db.Decimal(14, 2)
   paidAmount    Decimal @default(0) @db.Decimal(14, 2)
   pendingAmount Decimal @default(0) @db.Decimal(14, 2)
@@ -515,6 +519,8 @@ model Invoice {
   subtotal      Decimal @db.Decimal(14, 2)
   discount      Decimal @default(0) @db.Decimal(14, 2)
   taxAmount     Decimal @default(0) @db.Decimal(14, 2)
+  taxIncluded   Boolean @default(false)
+  surcharge     Decimal @default(0) @db.Decimal(14, 2)
   total         Decimal @db.Decimal(14, 2)
   paidAmount    Decimal @default(0) @db.Decimal(14, 2)
   pendingAmount Decimal @default(0) @db.Decimal(14, 2)

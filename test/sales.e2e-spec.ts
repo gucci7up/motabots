@@ -10,10 +10,13 @@ import {
   SaleStatus,
 } from '@prisma/client';
 import { AppModule } from '../src/app.module';
+import { today } from '../src/common/date-range';
 import { CreditsService } from '../src/credits/credits.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { PrismaService } from '../src/database/prisma.service';
+import { ReportsService } from '../src/reports/reports.service';
 import { SalesService } from '../src/sales/sales.service';
+import { SettingsService } from '../src/settings/settings.service';
 
 /**
  * Pruebas de integración de las operaciones que mueven dinero e inventario.
@@ -424,6 +427,167 @@ describe('Ventas, créditos e inventario (e2e)', () => {
 
       expect(sale.saleStatus).toBe(SaleStatus.COMPLETED);
       expect(await stockOf()).toBe('0');
+    });
+  });
+
+  describe('ITBIS incluido en el precio', () => {
+    async function enableTax(): Promise<void> {
+      await prisma.setting.createMany({
+        data: [
+          { key: 'tax.enabled', value: true, type: 'BOOLEAN' },
+          { key: 'tax.rate', value: 18, type: 'NUMBER' },
+          { key: 'tax.included', value: true, type: 'BOOLEAN' },
+        ],
+        skipDuplicates: true,
+      });
+      app.get(SettingsService).clearCache();
+    }
+
+    afterEach(() => {
+      app.get(SettingsService).clearCache();
+    });
+
+    it('el total NO sube: el impuesto ya estaba dentro del precio', async () => {
+      await enableTax();
+
+      const sale = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.CASH }],
+        },
+        userId,
+      );
+
+      // El cliente sigue pagando RD$800, no RD$944.
+      expect(sale.total.toString()).toBe('800');
+      expect(sale.taxIncluded).toBe(true);
+    });
+
+    it('calcula el ITBIS contenido: 800 = 677.97 + 122.03', async () => {
+      await enableTax();
+
+      const sale = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.CASH }],
+        },
+        userId,
+      );
+
+      expect(sale.taxAmount.toFixed(2)).toBe('122.03');
+      expect(sale.total.minus(sale.taxAmount).toFixed(2)).toBe('677.97');
+    });
+
+    it('sin impuesto activado, el ITBIS es cero', async () => {
+      const sale = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.CASH }],
+        },
+        userId,
+      );
+
+      expect(sale.taxAmount.toString()).toBe('0');
+      expect(sale.taxIncluded).toBe(false);
+    });
+
+    it('el ITBIS no cuenta como ingreso en la utilidad', async () => {
+      await enableTax();
+
+      await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.CASH }],
+        },
+        userId,
+      );
+
+      const report = await app.get(ReportsService).getSalesReport(today());
+
+      expect(report.netSales.toString()).toBe('800');
+      expect(report.taxCollected.toFixed(2)).toBe('122.03');
+      // Ganancia = 677.97 de ingreso real − 245.20 de costo
+      expect(report.profit.toFixed(2)).toBe('432.77');
+    });
+  });
+
+  describe('recargo por tarjeta', () => {
+    it('suma el 10% al pagar con tarjeta', async () => {
+      const sale = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: '880.00', method: PaymentMethod.CARD }],
+        },
+        userId,
+      );
+
+      expect(sale.subtotal.toString()).toBe('800');
+      expect(sale.surcharge.toString()).toBe('80');
+      expect(sale.total.toString()).toBe('880');
+      expect(sale.paymentStatus).toBe(PaymentStatus.PAID);
+    });
+
+    it('no aplica recargo en efectivo ni transferencia', async () => {
+      const efectivo = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.CASH }],
+        },
+        userId,
+      );
+      const transferencia = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: PRICE, method: PaymentMethod.BANK_TRANSFER }],
+        },
+        userId,
+      );
+
+      expect(efectivo.surcharge.toString()).toBe('0');
+      expect(transferencia.surcharge.toString()).toBe('0');
+    });
+
+    it('el recargo se calcula después del descuento', async () => {
+      const sale = await sales.create(
+        {
+          items: [{ productVariantId: variantId, quantity: '2' }],
+          discount: '600.00',
+          payments: [{ amount: '1100.00', method: PaymentMethod.CARD }],
+        },
+        userId,
+      );
+
+      // 1600 − 600 = 1000 de productos; el 10% es 100, no 160.
+      expect(sale.surcharge.toString()).toBe('100');
+      expect(sale.total.toString()).toBe('1100');
+    });
+
+    it('rechaza un pago que no cubre el recargo si dice pagar todo', async () => {
+      await expect(
+        sales.create(
+          {
+            items: [{ productVariantId: variantId, quantity: '1' }],
+            payments: [{ amount: '900.00', method: PaymentMethod.CARD }],
+          },
+          userId,
+        ),
+      ).rejects.toThrow(/supera el total/);
+    });
+
+    it('permite pago parcial con tarjeta dejando crédito por el resto', async () => {
+      const sale = await sales.create(
+        {
+          customerId,
+          items: [{ productVariantId: variantId, quantity: '1' }],
+          payments: [{ amount: '400.00', method: PaymentMethod.CARD }],
+          dueDate: '2026-09-01',
+        },
+        userId,
+      );
+
+      expect(sale.total.toString()).toBe('880');
+      expect(sale.pendingAmount.toString()).toBe('480');
+      expect(sale.creditAccount?.balance.toString()).toBe('480');
     });
   });
 

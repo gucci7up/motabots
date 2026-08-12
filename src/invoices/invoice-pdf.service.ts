@@ -379,13 +379,20 @@ export class InvoicePdfService {
       y += 16;
     };
 
+    const tax = money(invoice.taxAmount);
+
     row('SUBTOTAL', invoice.subtotal);
 
     if (money(invoice.discount).greaterThan(0)) {
       row('DESCUENTO', invoice.discount);
     }
-    if (money(invoice.taxAmount).greaterThan(0)) {
-      row('ITBIS', invoice.taxAmount);
+    if (money(invoice.surcharge).greaterThan(0)) {
+      row('RECARGO TARJETA', invoice.surcharge);
+    }
+    // Con precios que ya incluyen el impuesto, el ITBIS se informa pero no se suma:
+    // ponerlo como una línea más induciría a pensar que se está cobrando aparte.
+    if (tax.greaterThan(0) && !invoice.taxIncluded) {
+      row('ITBIS', tax);
     }
 
     doc
@@ -411,6 +418,20 @@ export class InvoicePdfService {
       });
 
     y += 22;
+
+    if (tax.greaterThan(0) && invoice.taxIncluded) {
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(8)
+        .fillColor(COLOR.muted)
+        .text(
+          `ITBIS incluido en el total: ${formatMoney(tax, store.currencySymbol)}`,
+          labelX - 60,
+          y,
+          { width: labelWidth + 60 + valueWidth, align: 'right' },
+        );
+      y += 16;
+    }
 
     doc
       .font('Helvetica')

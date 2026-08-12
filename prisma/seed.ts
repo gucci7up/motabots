@@ -191,6 +191,18 @@ async function seedSettings(): Promise<void> {
       description: 'Tasa de impuesto en porcentaje (ITBIS = 18)',
     },
     {
+      key: 'tax.included',
+      value: true,
+      type: SettingType.BOOLEAN,
+      description: 'Los precios de venta ya incluyen el ITBIS (no se suma encima)',
+    },
+    {
+      key: 'payments.cardSurchargePercent',
+      value: 10,
+      type: SettingType.NUMBER,
+      description: 'Recargo porcentual aplicado a las ventas pagadas con tarjeta',
+    },
+    {
       key: 'inventory.allowNegativeStock',
       value: false,
       type: SettingType.BOOLEAN,

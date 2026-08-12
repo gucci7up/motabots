@@ -25,33 +25,63 @@ El formato `-F c` (custom) permite restaurar tablas sueltas y comprime.
 
 ## Backup diario automático
 
-Recomendación: diario a las 3:00 AM, reteniendo 7 diarios, 4 semanales y 6 mensuales.
+El repositorio incluye [`scripts/backup.sh`](../scripts/backup.sh), listo para instalar en el
+servidor. Localiza el contenedor de PostgreSQL, hace el volcado **dentro** del contenedor (no
+necesita exponer el puerto ni instalar clientes en el host), **verifica que el dump se pueda
+leer** antes de darlo por bueno, y sólo entonces rota los antiguos.
 
-Ejemplo de entrada de cron en el servidor:
+### Instalación en el VPS
+
+Conéctate por SSH y ejecuta, en orden:
 
 ```bash
-0 3 * * * /usr/local/bin/motaparfum-backup.sh >> /var/log/motaparfum-backup.log 2>&1
+sudo curl -fsSL https://raw.githubusercontent.com/gucci7up/motabots/main/scripts/backup.sh -o /usr/local/bin/motaparfum-backup.sh
 ```
-
-Script de referencia:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-DEST=/var/backups/motaparfum
-STAMP=$(date +%F_%H%M)
-mkdir -p "$DEST"
-docker compose -f /etc/dokploy/motaparfum/docker-compose.yml exec -T postgres \
-  pg_dump -U motaparfum -d motaparfum_admin -F c > "$DEST/db_$STAMP.dump"
-tar czf "$DEST/storage_$STAMP.tar.gz" -C /var/lib/docker/volumes/motaparfum_storage_data/_data .
+sudo chmod +x /usr/local/bin/motaparfum-backup.sh
 ```
 
-**Retención:** revísala manualmente antes de automatizar cualquier borrado. Este proyecto no
-incluye eliminación automática de backups: un script de limpieza mal escrito borra el histórico
-completo y no hay forma de recuperarlo.
+Comprueba que encuentra el contenedor y que el volcado funciona **antes** de programarlo:
 
-Guarda una copia **fuera del servidor** (otro proveedor u otra región). Un backup que vive en
-el mismo disco que la base no protege contra la pérdida del disco.
+```bash
+sudo /usr/local/bin/motaparfum-backup.sh
+```
+
+Debe terminar con `Backup completado`. Si dice que no encuentra el contenedor, ajusta el
+patrón:
+
+```bash
+docker ps --format '{{.Names}}' | grep -i postgres
+```
+
+y vuelve a ejecutarlo con el nombre correcto:
+
+```bash
+sudo PG_CONTAINER=<nombre-que-salio> /usr/local/bin/motaparfum-backup.sh
+```
+
+### Programarlo
+
+```bash
+echo '0 3 * * * root PG_CONTAINER=motaparfum /usr/local/bin/motaparfum-backup.sh >> /var/log/motaparfum-backup.log 2>&1' | sudo tee /etc/cron.d/motaparfum-backup
+```
+
+Corre todos los días a las 3:00 AM y deja el registro en `/var/log/motaparfum-backup.log`.
+
+### Retención
+
+El script conserva los últimos **14** backups diarios (`KEEP_DAILY`). Sólo borra dumps más
+antiguos que ese umbral y **nunca el más reciente**. Aun así, revisa el log la primera semana:
+un script de limpieza mal configurado borra el histórico completo y no hay forma de
+recuperarlo.
+
+### Copia fuera del servidor
+
+Un backup que vive en el mismo disco que la base no protege contra la pérdida del disco. Ese
+es el escenario que más duele y el que este script **no** cubre por sí solo. Copia
+`/var/backups/motaparfum` a otro sitio: `rclone` a un bucket, `scp` a otra máquina, o la
+función de backups de Dokploy hacia S3.
 
 ## Restauración
 

@@ -15,6 +15,8 @@ export const SettingKey = {
   INVOICE_FORMAT: 'invoice.format',
   TAX_ENABLED: 'tax.enabled',
   TAX_RATE: 'tax.rate',
+  TAX_INCLUDED: 'tax.included',
+  CARD_SURCHARGE_PERCENT: 'payments.cardSurchargePercent',
   ALLOW_NEGATIVE_STOCK: 'inventory.allowNegativeStock',
   CREDIT_ENABLED: 'credit.enabled',
   CREDIT_DEFAULT_DUE_DAYS: 'credit.defaultDueDays',

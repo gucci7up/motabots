@@ -113,15 +113,20 @@ export class SalesService {
       }
 
       const discount = money(itemsDiscount.plus(globalDiscount));
-      const total = money(itemsSubtotal.minus(discount));
+      const base = money(itemsSubtotal.minus(discount));
 
-      if (isNegative(total)) {
+      if (isNegative(base)) {
         throw new DomainException(
           DomainErrorCode.INVALID_AMOUNT,
           'El descuento no puede superar el total de la venta.',
           { subtotal: itemsSubtotal.toString(), discount: discount.toString() },
         );
       }
+
+      // Recargo por tarjeta: dinero adicional que paga el cliente, no parte del precio.
+      const surcharge = await this.calculateSurcharge(base, dto.payments ?? []);
+      const total = money(base.plus(surcharge));
+      const tax = await this.calculateTax(total);
 
       const paidAmount = sum((dto.payments ?? []).map((payment) => money(payment.amount)));
 
@@ -175,7 +180,9 @@ export class SalesService {
           userId,
           subtotal: itemsSubtotal,
           discount,
-          taxAmount: money(0),
+          taxAmount: tax.amount,
+          taxIncluded: tax.included,
+          surcharge,
           total,
           paidAmount,
           pendingAmount,
@@ -210,7 +217,9 @@ export class SalesService {
           customerId: dto.customerId ?? null,
           subtotal: itemsSubtotal,
           discount,
-          taxAmount: money(0),
+          taxAmount: tax.amount,
+          taxIncluded: tax.included,
+          surcharge,
           total,
           paidAmount,
           pendingAmount,
@@ -529,6 +538,58 @@ export class SalesService {
         total: money(subtotal.minus(discount)),
       };
     });
+  }
+
+  /**
+   * ITBIS.
+   *
+   * Con `tax.included` (el caso de MotaParfum), el precio de venta ya contiene el impuesto:
+   * el total NO sube y el ITBIS es la porción contenida — total − total/(1+tasa). Es el
+   * cálculo que hay que hacer para no cobrarle al cliente un 18 % que ya estaba dentro.
+   *
+   * Sin `tax.included`, el impuesto se suma encima del total.
+   */
+  private async calculateTax(
+    total: Prisma.Decimal,
+  ): Promise<{ amount: Prisma.Decimal; included: boolean; rate: number }> {
+    const enabled = await this.settings.getBoolean(SettingKey.TAX_ENABLED, false);
+    const rate = await this.settings.getNumber(SettingKey.TAX_RATE, 0);
+
+    if (!enabled || rate <= 0 || total.isZero()) {
+      return { amount: money(0), included: false, rate: 0 };
+    }
+
+    const included = await this.settings.getBoolean(SettingKey.TAX_INCLUDED, true);
+    const factor = new Prisma.Decimal(1).plus(new Prisma.Decimal(rate).dividedBy(100));
+
+    if (included) {
+      const net = total.dividedBy(factor);
+      return { amount: money(total.minus(net)), included: true, rate };
+    }
+
+    return { amount: money(total.times(new Prisma.Decimal(rate).dividedBy(100))), included: false, rate };
+  }
+
+  /**
+   * Recargo por forma de pago. Sólo la tarjeta lo lleva, y se calcula sobre el valor de los
+   * productos ya descontado. Si cualquier pago de la venta es con tarjeta, se aplica al total:
+   * el costo del datáfono lo genera la transacción, no la porción pagada.
+   */
+  private async calculateSurcharge(
+    base: Prisma.Decimal,
+    payments: readonly { method: PaymentMethod }[],
+  ): Promise<Prisma.Decimal> {
+    const usesCard = payments.some((payment) => payment.method === PaymentMethod.CARD);
+    if (!usesCard || base.isZero()) {
+      return money(0);
+    }
+
+    const percent = await this.settings.getNumber(SettingKey.CARD_SURCHARGE_PERCENT, 10);
+    if (percent <= 0) {
+      return money(0);
+    }
+
+    return money(base.times(new Prisma.Decimal(percent).dividedBy(100)));
   }
 
   private async resolveDueDate(raw?: string): Promise<Date> {

@@ -6,7 +6,11 @@ import { PrismaService } from '../database/prisma.service';
 
 export interface ProfitAndLoss {
   range: DateRange;
-  /** Ingresos: total de las ventas completadas del período. */
+  /** Total facturado, ITBIS incluido: lo que el cliente pagó. */
+  billed: Prisma.Decimal;
+  /** ITBIS contenido en lo facturado. No es ingreso. */
+  taxCollected: Prisma.Decimal;
+  /** Ingreso real: lo facturado menos el impuesto. */
   revenue: Prisma.Decimal;
   /** Costo de ventas, siempre desde el snapshot congelado en cada línea. */
   costOfGoodsSold: Prisma.Decimal;
@@ -43,7 +47,7 @@ export class AccountingService {
           saleStatus: SaleStatus.COMPLETED,
           createdAt: { gte: range.from, lte: range.to },
         },
-        _sum: { total: true },
+        _sum: { total: true, taxAmount: true },
         _count: { _all: true },
       }),
       this.prisma.saleItem.findMany({
@@ -61,7 +65,11 @@ export class AccountingService {
       }),
     ]);
 
-    const revenue = money(salesAggregate._sum.total ?? 0);
+    // El ITBIS cobrado NO es ingreso: es dinero del Estado que pasa por la caja. Contarlo
+    // como ingreso inflaría la utilidad en un 18 % que no es tuyo.
+    const billed = money(salesAggregate._sum.total ?? 0);
+    const taxCollected = money(salesAggregate._sum.taxAmount ?? 0);
+    const revenue = money(billed.minus(taxCollected));
 
     const costOfGoodsSold = money(
       items.reduce(
@@ -80,6 +88,8 @@ export class AccountingService {
 
     return {
       range,
+      billed,
+      taxCollected,
       revenue,
       costOfGoodsSold,
       grossProfit,

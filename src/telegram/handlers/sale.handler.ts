@@ -194,12 +194,13 @@ export class SaleHandler extends BaseHandler {
         return;
       }
 
-      await this.edit(ctx, this.paymentStepText(ctx), this.paymentKeyboard());
+      // La forma de pago va primero: la tarjeta lleva recargo y cambia el total.
+      await this.edit(ctx, this.methodStepText(), this.methodKeyboard());
     });
 
     bot.action('sale:pay:full', async (ctx) => {
       await ctx.answerCbQuery();
-      const total = this.total(ctx);
+      const total = await this.totalWithSurcharge(ctx);
       this.sessions.update(ctx.user.id, { paidAmount: total.toString(), step: 'idle' });
       await this.showSummary(ctx);
     });
@@ -224,7 +225,7 @@ export class SaleHandler extends BaseHandler {
         [
           '*🧮 PAGO PARCIAL*',
           '',
-          `Total: ${amount(this.total(ctx))}`,
+          `Total: ${amount(await this.totalWithSurcharge(ctx))}`,
           '',
           'Escribe cuánto te está pagando ahora\\.',
         ].join('\n'),
@@ -235,7 +236,7 @@ export class SaleHandler extends BaseHandler {
     bot.action(/^sale:method:(.+)$/, async (ctx) => {
       await ctx.answerCbQuery();
       this.sessions.update(ctx.user.id, { paymentMethod: ctx.match[1] });
-      await this.showSummary(ctx);
+      await this.edit(ctx, await this.paymentStepText(ctx), this.paymentKeyboard());
     });
 
     // ── Vencimiento ──────────────────────────────────────────
@@ -491,7 +492,7 @@ export class SaleHandler extends BaseHandler {
       return;
     }
 
-    const total = this.total(ctx);
+    const total = await this.totalWithSurcharge(ctx);
 
     if (isNegative(paid)) {
       await this.reply(ctx, 'El pago no puede ser negativo\\.');
@@ -589,7 +590,8 @@ export class SaleHandler extends BaseHandler {
     const storeName = await this.settings.getString(SettingKey.STORE_NAME, 'MotaParfum');
 
     const discount = session.discount ? money(session.discount) : money(0);
-    const total = money(cartTotal(session.cart).minus(discount));
+    const surcharge = await this.surcharge(ctx);
+    const total = await this.totalWithSurcharge(ctx);
     const paid = session.paidAmount ? money(session.paidAmount) : money(0);
     const pending = money(total.minus(paid));
 
@@ -598,6 +600,7 @@ export class SaleHandler extends BaseHandler {
       customerName: session.customerName,
       cart: session.cart,
       discount,
+      surcharge,
       total,
       paid,
       pending,
@@ -670,10 +673,30 @@ export class SaleHandler extends BaseHandler {
 
   // ── Utilidades ─────────────────────────────────────────────
 
-  private total(ctx: BotContext): Prisma.Decimal {
+  /** Valor de los productos ya descontado, sin recargo. */
+  private base(ctx: BotContext): Prisma.Decimal {
     const session = this.sessions.get(ctx.user.id);
     const discount = session.discount ? money(session.discount) : money(0);
     return money(cartTotal(session.cart).minus(discount));
+  }
+
+  /**
+   * Recargo por pagar con tarjeta, sólo para mostrarlo en pantalla. El importe que se guarda
+   * lo vuelve a calcular SalesService dentro de la transacción, desde la misma configuración:
+   * el bot muestra, no decide cuánto se cobra.
+   */
+  private async surcharge(ctx: BotContext): Promise<Prisma.Decimal> {
+    const session = this.sessions.get(ctx.user.id);
+    if (session.paymentMethod !== PaymentMethod.CARD) {
+      return money(0);
+    }
+
+    const percent = await this.settings.getNumber(SettingKey.CARD_SURCHARGE_PERCENT, 10);
+    return money(this.base(ctx).times(new Prisma.Decimal(percent).dividedBy(100)));
+  }
+
+  private async totalWithSurcharge(ctx: BotContext): Promise<Prisma.Decimal> {
+    return money(this.base(ctx).plus(await this.surcharge(ctx)));
   }
 
   private async assertCreditAllowed(ctx: BotContext): Promise<boolean> {
@@ -742,14 +765,37 @@ export class SaleHandler extends BaseHandler {
     ]);
   }
 
-  private paymentStepText(ctx: BotContext): string {
-    return [
-      '*💰 PAGO*',
-      '',
-      `Total: *${amount(this.total(ctx))}*`,
-      '',
-      '¿Cómo te paga?',
-    ].join('\n');
+  private methodStepText(): string {
+    return ['*💳 FORMA DE PAGO*', '', '¿Con qué te paga?'].join('\n');
+  }
+
+  private methodKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
+    return Markup.inlineKeyboard([
+      [Markup.button.callback('💵 Efectivo', `sale:method:${PaymentMethod.CASH}`)],
+      [Markup.button.callback('🏦 Transferencia', `sale:method:${PaymentMethod.BANK_TRANSFER}`)],
+      [Markup.button.callback('💳 Tarjeta (+10%)', `sale:method:${PaymentMethod.CARD}`)],
+      [Markup.button.callback('📱 Pago móvil', `sale:method:${PaymentMethod.MOBILE_PAYMENT}`)],
+      [Markup.button.callback('🛒 Volver al carrito', 'sale:cart')],
+      [Markup.button.callback('❌ Cancelar', 'sale:cancel')],
+    ]);
+  }
+
+  private async paymentStepText(ctx: BotContext): Promise<string> {
+    const base = this.base(ctx);
+    const surcharge = await this.surcharge(ctx);
+    const lines = ['*💰 PAGO*', ''];
+
+    if (surcharge.greaterThan(0)) {
+      lines.push(
+        `Productos: ${amount(base)}`,
+        `Recargo por tarjeta: ${amount(surcharge)}`,
+        '',
+      );
+    }
+
+    lines.push(`Total: *${amount(money(base.plus(surcharge)))}*`, '', '¿Cuánto te paga ahora?');
+
+    return lines.join('\n');
   }
 
   private paymentKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
@@ -757,7 +803,7 @@ export class SaleHandler extends BaseHandler {
       [Markup.button.callback('💵 Paga todo', 'sale:pay:full')],
       [Markup.button.callback('🧮 Paga una parte', 'sale:pay:partial')],
       [Markup.button.callback('💳 Todo a crédito', 'sale:pay:none')],
-      [Markup.button.callback('🛒 Volver al carrito', 'sale:cart')],
+      [Markup.button.callback('💳 Cambiar forma de pago', 'sale:checkout')],
       [Markup.button.callback('❌ Cancelar', 'sale:cancel')],
     ]);
   }

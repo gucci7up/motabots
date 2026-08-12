@@ -59,6 +59,8 @@ export interface SaleSummaryData {
   customerName?: string;
   cart: readonly CartLine[];
   discount: Prisma.Decimal;
+  /** Recargo por pago con tarjeta. */
+  surcharge?: Prisma.Decimal;
   total: Prisma.Decimal;
   paid: Prisma.Decimal;
   pending: Prisma.Decimal;
@@ -84,6 +86,10 @@ export function renderSaleSummary(data: SaleSummaryData): string {
 
   if (data.discount.greaterThan(0)) {
     parts.push(`Descuento: ${amount(data.discount)}`);
+  }
+
+  if (data.surcharge?.greaterThan(0)) {
+    parts.push(`Recargo por tarjeta: ${amount(data.surcharge)}`);
   }
 
   parts.push(`*Total: ${amount(data.total)}*`);
