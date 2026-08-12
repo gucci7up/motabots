@@ -22,6 +22,16 @@ import {
 } from './messages';
 import type { BotContext } from './telegram.context';
 import { TelegramUpdateService } from './telegram-update.service';
+import { CashHandler } from './handlers/cash.handler';
+import { CreditsHandler } from './handlers/credits.handler';
+import { CustomersHandler } from './handlers/customers.handler';
+import { DashboardHandler } from './handlers/dashboard.handler';
+import { ExpensesHandler } from './handlers/expenses.handler';
+import type { BotHandler } from './handlers/handler.base';
+import { InventoryHandler } from './handlers/inventory.handler';
+import { InvoicesHandler } from './handlers/invoices.handler';
+import { ReportsHandler } from './handlers/reports.handler';
+import { SaleHandler } from './handlers/sale.handler';
 
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
@@ -33,7 +43,34 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     private readonly auth: TelegramAuthService,
     private readonly users: UsersService,
     private readonly updates: TelegramUpdateService,
+    private readonly dashboard: DashboardHandler,
+    private readonly sale: SaleHandler,
+    private readonly customers: CustomersHandler,
+    private readonly inventory: InventoryHandler,
+    private readonly credits: CreditsHandler,
+    private readonly invoices: InvoicesHandler,
+    private readonly cash: CashHandler,
+    private readonly expenses: ExpensesHandler,
+    private readonly reports: ReportsHandler,
   ) {}
+
+  /**
+   * Orden de registro: los handlers de sección van antes que los genéricos, porque
+   * Telegraf ejecuta el primer manejador que coincide.
+   */
+  private get handlers(): BotHandler[] {
+    return [
+      this.dashboard,
+      this.sale,
+      this.customers,
+      this.inventory,
+      this.credits,
+      this.invoices,
+      this.cash,
+      this.expenses,
+      this.reports,
+    ];
+  }
 
   async onModuleInit(): Promise<void> {
     const { botToken, adminIds, mode } = this.config.telegram;
@@ -199,15 +236,25 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       });
     });
 
+    // Handlers de cada sección. Se registran antes que los avisos genéricos.
+    for (const handler of this.handlers) {
+      handler.register(bot);
+    }
+
+    bot.action('noop', async (ctx) => {
+      await ctx.answerCbQuery();
+    });
+
     // Secciones aún no construidas: avisan con claridad en lugar de fingir que funcionan.
     for (const entry of MENU_ENTRIES) {
       if (entry.pendingPhase === undefined) {
         continue;
       }
 
+      const phase = entry.pendingPhase;
       bot.action(entry.callback, async (ctx) => {
         await ctx.answerCbQuery();
-        await ctx.editMessageText(pendingSectionMessage(entry.label, entry.pendingPhase!), {
+        await ctx.editMessageText(pendingSectionMessage(entry.label, phase), {
           parse_mode: 'MarkdownV2',
           ...navigationKeyboard(),
         });

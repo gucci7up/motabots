@@ -7,16 +7,16 @@
 | 0 | Análisis, arquitectura, modelo de datos | ✅ Hecho |
 | 1 | Infraestructura: NestJS, Prisma, PostgreSQL, config, logging, Swagger, Docker | ✅ Hecho |
 | 2 | Usuarios, roles, permisos, autenticación Telegram | ✅ Hecho |
-| 3 | Categorías, productos, variantes | ⬜ |
-| 4 | Inventario y movimientos | ⬜ |
-| 5 | Clientes | ⬜ |
-| 6 | Ventas | ⬜ |
-| 7 | Pagos y créditos | ⬜ |
-| 8 | Facturación + PDF | ⬜ |
-| 9 | Caja | ⬜ |
-| 10 | Gastos y contabilidad | ⬜ |
-| 11 | Reportes | ⬜ |
-| 12 | UX completa del bot | ⬜ |
+| 3 | Categorías, productos, variantes | ✅ Hecho |
+| 4 | Inventario y movimientos | ✅ Hecho |
+| 5 | Clientes | ✅ Hecho |
+| 6 | Ventas | ✅ Hecho |
+| 7 | Pagos y créditos | ✅ Hecho |
+| 8 | Facturación + PDF | ✅ Hecho |
+| 9 | Caja | ✅ Hecho |
+| 10 | Gastos y contabilidad | ✅ Hecho |
+| 11 | Reportes | ✅ Hecho |
+| 12 | UX completa del bot | ✅ Hecho |
 | 13 | Auditoría | ⬜ |
 | 14 | Testing exhaustivo | ⬜ |
 | 15 | Docker / Dokploy / producción | ⬜ |
